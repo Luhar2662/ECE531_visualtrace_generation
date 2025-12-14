@@ -276,6 +276,46 @@ def draw_path_on_image(img_pil, pix_orig, color=(255, 0, 0), width=4):
     return img_out
 
 
+def resample_polyline_max_points(path_xyz: np.ndarray, max_points: int = 5) -> np.ndarray:
+    """
+    Resample a polyline (N,3) to have at most `max_points` points (>=2),
+    evenly spaced by arc length. Preserves endpoints.
+    """
+    path_xyz = np.asarray(path_xyz, dtype=np.float64)
+    n = path_xyz.shape[0]
+    if n <= max_points:
+        return path_xyz
+
+    # cumulative arc length
+    seg = np.linalg.norm(path_xyz[1:] - path_xyz[:-1], axis=1)
+    s = np.concatenate([[0.0], np.cumsum(seg)])
+    total = float(s[-1])
+    if total <= 1e-12:
+        # all points identical; just return endpoints
+        return path_xyz[[0, -1], :]
+
+    # target arc-length positions
+    k = max_points
+    s_targets = np.linspace(0.0, total, k)
+
+    # resample by linear interpolation along segments
+    out = np.zeros((k, 3), dtype=np.float64)
+    j = 0
+    for i, st in enumerate(s_targets):
+        while j < len(s) - 2 and s[j + 1] < st:
+            j += 1
+        s0, s1 = s[j], s[j + 1]
+        p0, p1 = path_xyz[j], path_xyz[j + 1]
+        t = 0.0 if (s1 - s0) < 1e-12 else (st - s0) / (s1 - s0)
+        out[i] = (1 - t) * p0 + t * p1
+
+    return out
+
+
+
+
+
+
 def apply_T(T: np.ndarray, p: np.ndarray) -> np.ndarray:
     p_h = np.r_[p, 1.0]
     return (T @ p_h)[:3]
@@ -596,9 +636,14 @@ if __name__ == "__main__":
         o3d.visualization.draw_geometries(geoms)
     else:
         print("Path length:", len(path))
-        pts = o3d.utility.Vector3dVector(path)
-        lines = [[i, i + 1] for i in range(len(path) - 1)]
+
+        # Reparameterize to at most 5 points
+        path_vis = resample_polyline_max_points(path, max_points=5)
+
+        pts = o3d.utility.Vector3dVector(path_vis)
+        lines = [[i, i + 1] for i in range(len(path_vis) - 1)]
         ls = o3d.geometry.LineSet(points=pts, lines=o3d.utility.Vector2iVector(lines))
+
         geoms.append(ls)
         o3d.visualization.draw_geometries(geoms)
 
@@ -619,6 +664,7 @@ if __name__ == "__main__":
 
         # 3) map cropped pixels back to ORIGINAL image coords
         pix_orig = cropped_to_original_pixels(pix_cropped, orig_size, resized_size, PAD)
+        print("Projected path pixels (orig image coords):", np.array(pix_orig, dtype=np.int64))
 
         # 4) draw on original image and save/show
         img_with_path = draw_path_on_image(img0, pix_orig, color=(255, 0, 0), width=4)
