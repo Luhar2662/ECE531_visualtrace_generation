@@ -35,9 +35,11 @@ def resize_image_file(input_path: str, output_path: str) -> None:
     cv.imwrite(output_path, resized_image)  
     
 
-paths = ["pick_up_the_blue_can_obj_-0.1_-0.05_001_001.png", "pick_up_the_blue_can_obj_-0.1_0.45_001_001.png", "pick_up_the_blue_can_obj_-0.35_-0.05_001_001.png",
-         "pick_up_the_blue_can_obj_-0.35_0.45_001_001.png", "pick_up_the_blue_can_obj_-0.235_0.42_001_001.png", "pick_up_the_blue_can_obj_-0.22499999999999998_-0.05_001_001.png",
-         "pick_up_the_blue_can_obj_-0.22499999999999998_0.45_001_001.png"]
+# paths = ["pick_up_the_blue_can_obj_-0.1_-0.05_001_001.png", "pick_up_the_blue_can_obj_-0.1_0.45_001_001.png", "pick_up_the_blue_can_obj_-0.35_-0.05_001_001.png",
+#          "pick_up_the_blue_can_obj_-0.35_0.45_001_001.png", "pick_up_the_blue_can_obj_-0.235_0.42_001_001.png", "pick_up_the_blue_can_obj_-0.22499999999999998_-0.05_001_001.png",
+#          "pick_up_the_blue_can_obj_-0.22499999999999998_0.45_001_001.png"]
+
+paths = ["clean_blue_can_obj_-0.1_-0.05001.png"]
 
 for path in paths:
     resize_image_file(path, "resized_" + path)

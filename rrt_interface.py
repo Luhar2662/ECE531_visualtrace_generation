@@ -499,16 +499,13 @@ if __name__ == "__main__":
     # ---- Inputs ----
     img_path = "resized_pick_up_the_blue_can_obj_-0.1_-0.05_001_001.png"
 
-    # Pixels picked on ORIGINAL image (unresized) coordinates:
-    # start_pixel_orig = (553, 110)
-    # goal_pixel_orig  = (169, 218)
-    
-    start_pixel_orig = (221, 47)
+
+    start_pixel_orig = (234, 71) # Fixed end effector starting valid for all
     goal_pixel_orig  = (21, 142)
 
     # Synthetic intrinsics for the FINAL (resized+copped) image:
     fx = fy = 500.0
-    PAD = 16
+    PAD = 0
 
     # This flip matches your earlier pcd.transform()
     T_flip = np.array(
@@ -592,7 +589,7 @@ if __name__ == "__main__":
 
     start_cam = pixel_depth_to_3d_resized(u_s, v_s, depth_m, fx, fy, cx, cy, neighborhood=2)
     goal_cam  = pixel_depth_to_3d_resized(u_g, v_g, depth_m, fx, fy, cx, cy, neighborhood=2) 
-    clearance = 0.01 + 2 * voxel_size  # robot_radius + 2 voxels (tune)
+    clearance = 0.01 + 6 * voxel_size  # robot_radius + 2 voxels (tune)
 
     # ray dirs in camera frame (use resized+cooked pixel u_s,v_s etc.)
     d_s_cam = pixel_to_ray_dir_cam(u_s, v_s, fx, fy, cx, cy)
@@ -677,7 +674,8 @@ if __name__ == "__main__":
         pix_cropped[out] = np.array([np.nan, np.nan])
 
         # 3) map cropped pixels back to ORIGINAL image coords
-        pix_orig = cropped_to_original_pixels(pix_cropped, orig_size, resized_size, PAD)
+        # pix_orig = cropped_to_original_pixels(pix_cropped, orig_size, resized_size, PAD)
+        pix_orig = pix_cropped
         print("Projected path pixels (orig image coords):", np.array(pix_orig, dtype=np.int64))
 
         # 4) draw on original image and save/show
