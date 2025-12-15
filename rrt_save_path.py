@@ -22,6 +22,8 @@ from pathlib import Path
 import hashlib
 import cv2 as cv
 import json
+import csv
+
 
 # =============================
 # Depth -> RGBD -> Point cloud
@@ -751,6 +753,10 @@ def batch_success_report_with_reasons_and_overlays(
     rows: List[ImageResult] = []
     out_dir = ensure_overlay_dir(overlay_dir)
 
+    # ---- NEW: trajectory export containers ----
+    waypoint_rows: list[dict] = []   # long-format CSV
+    traj_dict: dict = {}             # nested JSON
+
     for obj_tag, img_path in image_files.items():
         blue_px = can_pixels[obj_tag]["blue"]
         coke_px = can_pixels[obj_tag]["coke"]
@@ -784,41 +790,97 @@ def batch_success_report_with_reasons_and_overlays(
             f"BOTH={row.both_success}"
         )
 
-        # ---------- Save overlays (no show) ----------
-        # Always load the ORIGINAL image for drawing (your resized_*.png is already 256x256).
+        # ---------- Save overlays + collect projected points ----------
         img0 = Image.open(img_path).convert("RGB")
-
-        any_path = False
         img_overlay = img0.copy()
+        any_path = False
 
-        # Blue path overlay
-        if blue_path is not None:
-            any_path = True
-            path_vis = resample_polyline_max_points(blue_path, max_points=5)
-            path_cam = apply_T_inv(T_flip, path_vis)  # world -> camera
-            pix_depth = project_cam_to_depth_pixels(path_cam, fx, fy, cx, cy)  # in depth_m coords
-            pix_orig = depth_pixels_to_orig256(pix_depth, pad)               # back to 256x256 coords
-            img_b = draw_polyline(img0, pix_orig, color=(0, 120, 255), width=3)
-            img_b.save(out_dir / f"{obj_tag}__blue.png")
-            img_overlay = draw_polyline(img_overlay, pix_orig, color=(0, 120, 255), width=3)
+        traj_dict[obj_tag] = {
+            "obj_tag": obj_tag,
+            "image_path": img_path,
+            "blue": {"success": bool(blue_res.success), "reason": blue_res.reason, "points_uv": []},
+            "coke": {"success": bool(coke_res.success), "reason": coke_res.reason, "points_uv": []},
+        }
 
-        # Coke path overlay
-        if coke_path is not None:
+        def handle_target(target_name: str, res: TargetResult, path3d: Optional[np.ndarray], color):
+            nonlocal any_path, img_overlay
+
+            if path3d is None:
+                return
+
             any_path = True
-            path_vis = resample_polyline_max_points(coke_path, max_points=5)
+
+            # 1) resample to <= 5 waypoints in 3D
+            path_vis = resample_polyline_max_points(path3d, max_points=5)
+
+            # 2) world -> camera
             path_cam = apply_T_inv(T_flip, path_vis)
-            pix_depth = project_cam_to_depth_pixels(path_cam, fx, fy, cx, cy)
-            pix_orig = depth_pixels_to_orig256(pix_depth, pad)
-            img_c = draw_polyline(img0, pix_orig, color=(255, 60, 60), width=3)
-            img_c.save(out_dir / f"{obj_tag}__coke.png")
-            img_overlay = draw_polyline(img_overlay, pix_orig, color=(255, 60, 60), width=3)
 
-        # Combined overlay
+            # 3) camera -> depth pixel coords
+            pix_depth = project_cam_to_depth_pixels(path_cam, fx, fy, cx, cy)
+
+            # 4) depth pixel coords -> original (256x256) image coords
+            pix_orig = depth_pixels_to_orig256(pix_depth, pad)
+
+            # ---- Save per-target overlay image
+            img_t = draw_polyline(img0, pix_orig, color=color, width=3)
+            img_t.save(out_dir / f"{obj_tag}__{target_name}.png")
+
+            # ---- Add to combined overlay
+            img_overlay = draw_polyline(img_overlay, pix_orig, color=color, width=3)
+
+            # ---- NEW: store points (drop NaNs)
+            pts_list = to_serializable_points(pix_orig)
+            traj_dict[obj_tag][target_name]["points_uv"] = pts_list
+
+            # ---- NEW: write long-format rows
+            for i, (u, v) in enumerate(pts_list):
+                waypoint_rows.append({
+                    "obj_tag": obj_tag,
+                    "image_path": img_path,
+                    "target": target_name,
+                    "waypoint_idx": i,
+                    "u": u,
+                    "v": v,
+                    "success": bool(res.success),
+                    "reason": res.reason,
+                })
+
+        handle_target("blue", blue_res, blue_path, color=(0, 120, 255))
+        handle_target("coke", coke_res, coke_path, color=(255, 60, 60))
+
         if any_path:
             img_overlay.save(out_dir / f"{obj_tag}__overlay.png")
 
+    # ---- NEW: write CSV + JSON once at the end ----
+    csv_path = out_dir / "rrt_projected_waypoints.csv"
+    save_projected_trajs_csv(waypoint_rows, csv_path)
+
+    json_path = out_dir / "rrt_projected_waypoints.json"
+    with open(json_path, "w") as f:
+        json.dump(traj_dict, f, indent=2)
+
+    print(f"Saved projected waypoints CSV to: {csv_path}")
+    print(f"Saved projected waypoints JSON to: {json_path}")
+
     return rows
 
+
+def save_projected_trajs_csv(rows: list[dict], out_path: Path) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fields = ["obj_tag", "image_path", "target", "waypoint_idx", "u", "v", "success", "reason"]
+    with open(out_path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fields)
+        w.writeheader()
+        w.writerows(rows)
+
+
+def to_serializable_points(pix: np.ndarray) -> list[list[float]]:
+    """Nx2 -> [[u,v], ...] with NaNs dropped."""
+    pix = np.asarray(pix, dtype=np.float64)
+    ok = ~np.isnan(pix).any(axis=1)
+    pix = pix[ok]
+    return [[float(u), float(v)] for (u, v) in pix]
 
 def export_target_pixels(
     image_files: Dict[str, str],

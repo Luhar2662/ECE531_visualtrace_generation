@@ -1,0 +1,8 @@
+obj_tag,image_path,ee_u,ee_v,blue_u,blue_v,coke_u,coke_v
+obj_-0.1_-0.05,resized_pick_up_the_blue_can_obj_-0.1_-0.05_001_001.png,234,71,75,79,21,142
+obj_-0.1_-0.45,resized_pick_up_the_blue_can_obj_-0.1_0.45_001_001.png,234,71,132,150,194,143
+obj_-0.35_-0.05,resized_pick_up_the_blue_can_obj_-0.35_-0.05_001_001.png,234,71,101,106,55,71
+obj_-0.35_0.45,resized_pick_up_the_blue_can_obj_-0.35_0.45_001_001.png,234,71,186,157,188,82
+obj_-0.235_0.42,resized_pick_up_the_blue_can_obj_-0.235_0.42_001_001.png,234,71,124,98,179,118
+obj_-0.22499999999999998_0.45,resized_pick_up_the_blue_can_obj_-0.22499999999999998_0.45_001_001.png,234,71,123,100,190,110
+obj_-0.22499999999999998_-0.05,resized_pick_up_the_blue_can_obj_-0.22499999999999998_-0.05_001_001.png,234,71,91,59,50,111
