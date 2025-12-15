@@ -17,11 +17,14 @@ import torch
 from transformers import GLPNImageProcessor, GLPNForDepthEstimation
 from pathlib import Path
 import hashlib
-
+import cv2 as cv
 
 # =============================
 # Depth -> RGBD -> Point cloud
 # =============================
+# def _resize_image(image: np.ndarray) -> np.ndarray:
+#     image = cv.resize(image, tuple([256,256]), interpolation=cv.INTER_AREA)
+#     return image
 
 def resize_to_multiple_of_32(img: Image.Image, target_h: int = 480) -> Image.Image:
     new_height = target_h if img.height > target_h else img.height
@@ -52,38 +55,38 @@ def predict_depth_glpn(image: Image.Image) -> np.ndarray:
 
 
 
-def get_cached_depth_for_path(
-    image_path: str = "simplerenv_complex.png",
-    cache_dir: str = ".depth_cache",
-    compute_fn=None,
-    resize_fn=None,
-) -> np.ndarray:
-    assert compute_fn is not None
+# def get_cached_depth_for_path(
+#     image_path: str = "pick_up_the_blue_can_obj_-0.1_-0.05_001_001.png",
+#     cache_dir: str = ".depth_cache",
+#     compute_fn=None,
+#     resize_fn=None,
+# ) -> np.ndarray:
+#     assert compute_fn is not None
 
-    base_dir = Path(__file__).resolve().parent
-    img_path = (base_dir / image_path).resolve()
+#     base_dir = Path(__file__).resolve().parent
+#     img_path = (base_dir / image_path).resolve()
 
-    st = img_path.stat()
-    key = f"{img_path}__{st.st_mtime_ns}__{st.st_size}"
-    fname = hashlib.sha256(key.encode("utf-8")).hexdigest() + ".npy"
+#     st = img_path.stat()
+#     key = f"{img_path}__{st.st_mtime_ns}__{st.st_size}"
+#     fname = hashlib.sha256(key.encode("utf-8")).hexdigest() + ".npy"
 
-    cache_path = (base_dir / cache_dir).resolve()
-    cache_path.mkdir(parents=True, exist_ok=True)
-    f = cache_path / fname
+#     cache_path = (base_dir / cache_dir).resolve()
+#     cache_path.mkdir(parents=True, exist_ok=True)
+#     f = cache_path / fname
 
-    # Helpful debug
-    print("Cache file:", f)
+#     # Helpful debug
+#     print("Cache file:", f)
 
-    if f.exists():
-        return np.load(f)
+#     if f.exists():
+#         return np.load(f)
 
-    img = Image.open(img_path).convert("RGB")
-    if resize_fn is not None:
-        img = resize_fn(img)
+#     img = Image.open(img_path).convert("RGB")
+#     if resize_fn is not None:
+#         img = resize_fn(img)
 
-    depth = compute_fn(img).astype(np.float32)
-    np.save(f, depth)
-    return depth
+#     depth = compute_fn(img).astype(np.float32)
+#     np.save(f, depth)
+#     return depth
 
 
 def pixel_to_ray_dir_cam(u, v, fx, fy, cx, cy):
@@ -394,7 +397,7 @@ class VoxelOccupancy:
 class RRTParams:
     max_iters: int = 8000
     step_size: float = 0.20
-    goal_sample_prob: float = 0.15
+    goal_sample_prob: float = 0.30
     goal_tolerance: float = 0.25
     bounds_min: Tuple[float, float, float] = (-2.0, -2.0, 0.0)
     bounds_max: Tuple[float, float, float] = ( 3.0,  3.0, 1.5)
@@ -494,11 +497,14 @@ def rrt_plan(
 
 if __name__ == "__main__":
     # ---- Inputs ----
-    img_path = "simplerenv_complex.png"
+    img_path = "resized_pick_up_the_blue_can_obj_-0.1_-0.05_001_001.png"
 
     # Pixels picked on ORIGINAL image (unresized) coordinates:
-    start_pixel_orig = (376, 163)
-    goal_pixel_orig  = (288, 176)
+    # start_pixel_orig = (553, 110)
+    # goal_pixel_orig  = (169, 218)
+    
+    start_pixel_orig = (221, 47)
+    goal_pixel_orig  = (21, 142)
 
     # Synthetic intrinsics for the FINAL (resized+copped) image:
     fx = fy = 500.0
@@ -518,9 +524,13 @@ if __name__ == "__main__":
     # ---- Load image & depth ----
     img0 = Image.open(img_path).convert("RGB")
     orig_size = img0.size  # (W0,H0)
+    print("Original image size:", orig_size)
 
-    img_resized = resize_to_multiple_of_32(img0, target_h=480)
+    #img_resized = resize_to_multiple_of_32(img0, target_h=480)
+    #img_resized = _resize_image(img0)
+    img_resized = img0
     resized_size = img_resized.size  # (Wr,Hr)
+    print("Resized image size:", resized_size)
 
     depth_pred = predict_depth_glpn(img_resized)  # (Hr',Wr') but aligned to resized image in practice
 
@@ -564,18 +574,20 @@ if __name__ == "__main__":
     occ = VoxelOccupancy.from_point_cloud(pcd, voxel_size=voxel_size)
 
     # ---- Convert start/goal pixels to 3D (camera frame -> then apply T_flip) ----
-    u_s, v_s = map_pixel_orig_to_resized_cropped(
-        start_pixel_orig[0], start_pixel_orig[1],
-        orig_size=orig_size,
-        resized_size=resized_size,
-        pad=PAD,
-    )
-    u_g, v_g = map_pixel_orig_to_resized_cropped(
-        goal_pixel_orig[0], goal_pixel_orig[1],
-        orig_size=orig_size,
-        resized_size=resized_size,
-        pad=PAD,
-    )
+    # u_s, v_s = map_pixel_orig_to_resized_cropped(
+    #     start_pixel_orig[0], start_pixel_orig[1],
+    #     orig_size=orig_size,
+    #     resized_size=resized_size,
+    #     pad=PAD,
+    # )
+    # u_g, v_g = map_pixel_orig_to_resized_cropped(
+    #     goal_pixel_orig[0], goal_pixel_orig[1],
+    #     orig_size=orig_size,
+    #     resized_size=resized_size,
+    #     pad=PAD,
+    # )
+    u_s, v_s = start_pixel_orig
+    u_g, v_g = goal_pixel_orig
     
 
     start_cam = pixel_depth_to_3d_resized(u_s, v_s, depth_m, fx, fy, cx, cy, neighborhood=2)
@@ -614,7 +626,7 @@ if __name__ == "__main__":
         goal_tolerance=0.25,
         bounds_min=tuple(bmin.tolist()),
         bounds_max=tuple(bmax.tolist()),
-        rng_seed=0,
+        rng_seed=10,
         collision_step=None,   # default -> 0.5*voxel_size
     )
 
@@ -646,10 +658,12 @@ if __name__ == "__main__":
 
         geoms.append(ls)
         o3d.visualization.draw_geometries(geoms)
+        
+    
 
 
         # 1) convert path from "planning/world" frame back to camera frame
-        path_cam = apply_T_inv(T_flip, path)
+        path_cam = apply_T_inv(T_flip, path_vis)
 
         # 2) project to CROPPED pixel coords (cropped image is img_cropped)
         pix_cropped, _ = project_cam_to_cropped_pixels(path_cam, fx, fy, cx, cy)
